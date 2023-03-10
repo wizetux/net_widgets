@@ -32,7 +32,8 @@ local function worker(args)
   if args.skipcmdline == nil then
     args.skipcmdline = true
   end
-  if args.skipvpncheck == nil or args.skiproutes or args.skipcmdline then
+  -- Default to skipping vpn check if we are skip
+  if args.skipvpncheck == nil and (args.skiproutes or args.skipcmdline) then
     args.skipvpncheck = true
   end
 
@@ -216,9 +217,9 @@ local function worker(args)
 
     -- Grab process information (e.g., for tun/tap devices)
     if (not args.skipcmdline) then
-      local cmd = "sudo find /proc -name task -prune -o "
+      local cmd = "sudo -n find /proc -name task -prune -o "
       cmd = cmd .. "-path /proc/\\*/fdinfo/\\* -print0 "
-      cmd = cmd .. "| xargs -0 sudo grep '^iff:'"
+      cmd = cmd .. "| xargs -0 sudo -n grep '^iff:'"
       --cmd = cmd .. "| sed 's/^\\(.proc.*\\/\\)fdinfo.*/\\1cmdline/'"
       --cmd = cmd .. "| xargs grep -va asdfasdfasdf "
       --cmd = cmd .. "| sed 's/\\x00/ /g'"
@@ -243,7 +244,7 @@ local function worker(args)
     -- TODO add checks for more vpn types, e.g., l2tp/ipsec, pptp, etc
     -- Auto-detect VPN interfaces
     if (not args.skipvpncheck) then
-      local f = io.popen("sudo wg")
+      local f = io.popen("sudo -n wg")
       for line in f:lines() do
         local iface = line:match("^interface: ([^%s]+)")
         if iface and links[iface] then
@@ -252,6 +253,8 @@ local function worker(args)
           links[iface].is_drvpn = links[iface].default_route
         end
       end
+      f:close()
+
       for iface, s in pairs(links) do
         if iface:match("^tun") and s.cmdlines then
           -- TUN/TAP devices are never in an "UP" state, but if there's a
@@ -361,6 +364,16 @@ local function worker(args)
       widget:set_widget(nil)
     end
     for _, s in pairs(real_interfaces) do
+      if (s.iface:match("^tun")
+          and not args.skipvpncheck
+         )
+      then
+        widget:set_widget(vpn)
+        break
+      end
+      -- if (s.iface == "tun0") then
+      --   widget:set_widget(vpn)
+      --   break
       if (not args.skipvpncheck and s.is_drvpn) then
         widget:set_widget(vpn)
         break
